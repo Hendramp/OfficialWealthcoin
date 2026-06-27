@@ -356,7 +356,7 @@ function Hero({ account, onConnect }) {
           {[
             { label: 'Network', val: 'Polygon' },
             { label: 'Token', val: 'WTC' },
-            { label: 'Total Supply', val: '7.5B' },
+            { label: 'Total Supply', val: '1B' },
             { label: 'Moon Goal', val: '$0.75' },
           ].map(s => (
             <div key={s.label} className="card-glass p-3 rounded-xl text-center">
@@ -517,7 +517,7 @@ function BuySection({ account, chainId, tokensPerMatic, totalSupply, polUsdPrice
   }
 
   // Presale progress: tokens sold = totalSupply - circulating (we use totalSupply as cap, sold derived from on-chain supply)
-  const PRESALE_HARD_CAP = 7_500_000_000;
+  const PRESALE_HARD_CAP = 1_000_000_000;
   const soldRaw = totalSupply ? parseFloat(totalSupply.replace(/,/g, '')) : 0;
   const pct = Math.min((soldRaw / PRESALE_HARD_CAP) * 100, 100);
 
@@ -557,7 +557,7 @@ function BuySection({ account, chainId, tokensPerMatic, totalSupply, polUsdPrice
             <div className="text-right">
               <div className="text-white/40 text-xs uppercase tracking-wider mb-1">Moon Goal</div>
               <div className="text-[#00C853] font-bold text-2xl">$0.75</div>
-              <div className="text-white/30 text-xs mt-0.5">$5.625B market cap</div>
+              <div className="text-white/30 text-xs mt-0.5">$750M market cap</div>
             </div>
           </div>
 
@@ -565,7 +565,7 @@ function BuySection({ account, chainId, tokensPerMatic, totalSupply, polUsdPrice
           <div>
             <div className="flex justify-between text-xs text-white/40 mb-2">
               <span>Tokens Distributed</span>
-              <span>{pct.toFixed(2)}% of 7.5B</span>
+              <span>{pct.toFixed(2)}% of 1B</span>
             </div>
             <div className="h-3 rounded-full bg-white/5 border border-white/10 overflow-hidden">
               <div className="h-full rounded-full bg-gradient-to-r from-[#D4AF37] to-[#FFD700] transition-all duration-700"
@@ -573,7 +573,7 @@ function BuySection({ account, chainId, tokensPerMatic, totalSupply, polUsdPrice
             </div>
             <div className="flex justify-between text-xs mt-2">
               <span className="text-[#D4AF37]/70">{totalSupply || '—'} WTC distributed</span>
-              <span className="text-white/30">7,500,000,000 total</span>
+              <span className="text-white/30">1,000,000,000 total</span>
             </div>
           </div>
 
@@ -1019,13 +1019,13 @@ function TokenomicsSection() {
       <div className="flex flex-col sm:flex-row items-center justify-center gap-6 mb-14">
         <div className="card-glass px-6 py-4 rounded-2xl border border-[#D4AF37]/20 text-center">
           <div className="text-white/40 text-xs uppercase tracking-wider mb-1">Total Supply</div>
-          <div className="text-[#FFD700] font-bold text-2xl">7,500,000,000</div>
-          <div className="text-white/30 text-xs mt-0.5">7.5 Billion WTC</div>
+          <div className="text-[#FFD700] font-bold text-2xl">1,000,000,000</div>
+          <div className="text-white/30 text-xs mt-0.5">1 Billion WTC</div>
         </div>
         <div className="card-glass px-6 py-4 rounded-2xl border border-[#00C853]/20 text-center">
           <div className="text-white/40 text-xs uppercase tracking-wider mb-1">🌙 Moon Goal</div>
           <div className="text-[#00C853] font-bold text-2xl">$0.75 <span className="text-sm font-normal text-white/40">/ WTC</span></div>
-          <div className="text-white/30 text-xs mt-0.5">$5.625B fully diluted market cap</div>
+          <div className="text-white/30 text-xs mt-0.5">$750M fully diluted market cap</div>
         </div>
       </div>
 
