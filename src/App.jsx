@@ -377,9 +377,16 @@ function Hero({ account, onConnect }) {
 }
 
 // ── Wallet Panel ──────────────────────────────────────────────────────────────
-function WalletPanel({ account, maticBalance, wlthBalance, stakedBal, pendingRew, chainId, onConnect, onSwitch }) {
+function WalletPanel({ account, maticBalance, wlthBalance, stakedBal, pendingRew, chainId, onConnect, onSwitch, onRefresh }) {
   const wrongNetwork = account && chainId !== TARGET_CHAIN_ID;
+  const [refreshing, setRefreshing] = useState(false);
   if (!account) return null;
+
+  async function handleRefresh() {
+    setRefreshing(true);
+    await onRefresh?.();
+    setRefreshing(false);
+  }
 
   return (
     <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
@@ -394,11 +401,17 @@ function WalletPanel({ account, maticBalance, wlthBalance, stakedBal, pendingRew
               <div className="text-[#D4AF37] font-mono text-sm font-medium">{shortAddr(account)}</div>
             </div>
           </div>
-          {wrongNetwork && (
-            <button onClick={onSwitch} className="btn-danger px-4 py-2 rounded-lg text-sm font-semibold">
-              ⚠ Switch to Polygon
+          <div className="flex items-center gap-3">
+            {wrongNetwork && (
+              <button onClick={onSwitch} className="btn-danger px-4 py-2 rounded-lg text-sm font-semibold">
+                ⚠ Switch to Polygon
+              </button>
+            )}
+            <button onClick={handleRefresh} disabled={refreshing}
+              className="px-3 py-1.5 rounded-lg border border-[#D4AF37]/30 text-[#D4AF37]/60 hover:text-[#D4AF37] hover:border-[#D4AF37]/60 transition-all text-xs">
+              {refreshing ? '↻ Loading…' : '↻ Refresh'}
             </button>
-          )}
+          </div>
           <div className="flex flex-wrap gap-6">
             <Stat label="POL Balance" value={Number(maticBalance).toFixed(4)} unit="POL" color="white" />
             <Stat label="WTC Balance" value={wlthBalance} unit="WTC" color="gold" />
@@ -1372,6 +1385,13 @@ export default function App() {
     };
   }, [disconnect, loadContractData]);
 
+  // Auto-refresh balances every 30s while a wallet is connected
+  useEffect(() => {
+    if (!account) return;
+    const interval = setInterval(() => loadContractData(account), 30_000);
+    return () => clearInterval(interval);
+  }, [account, loadContractData]);
+
   return (
     <div className="min-h-screen bg-[#0A0A0A]">
       <Toast toasts={toasts} />
@@ -1390,6 +1410,7 @@ export default function App() {
         maticBalance={maticBalance} wlthBalance={wlthBalance}
         stakedBal={stakedBal} pendingRew={pendingRew}
         onConnect={() => setConnectModalOpen(true)} onSwitch={switchNetwork}
+        onRefresh={() => loadContractData(account)}
       />
       <BuySection
         account={account} chainId={chainId}
