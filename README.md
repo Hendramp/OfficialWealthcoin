@@ -106,3 +106,21 @@ npm install
 ## Support
 
 For issues or questions, check the contract address and verify you're on the Polygon network.
+
+## Deploying to Vercel
+
+Recommended steps to deploy the production build to Vercel:
+
+1. Push the repository to GitHub.
+2. Create a new project on Vercel and import the repo.
+	- Set the **Build Command** to `npm run build` (or leave blank if using `vercel.json`).
+	- Set the **Output Directory** to `dist`.
+3. Or deploy from CLI:
+```bash
+npm install
+npm run vercel-build
+# then (if you have Vercel CLI configured)
+vercel --prod
+```
+
+If you see missing asset errors after deploy, ensure `vercel.json` contains an assets rewrite before the SPA catch-all (this project includes that fix).

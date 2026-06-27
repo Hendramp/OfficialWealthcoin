@@ -4,6 +4,8 @@ import { ethers } from 'ethers';
 const CONTRACT_ADDRESS = '0x394b57F4a40ff31530d66f904e1Db2C6516c018F';
 const TARGET_CHAIN_ID = 137;
 const CHAIN_HEX = '0x89';
+const POLYGON_RPC_URL = 'https://polygon-rpc.com/';
+const WALLETCONNECT_PROJECT_ID = import.meta.env.VITE_WALLETCONNECT_PROJECT_ID || '';
 
 const CONTRACT_ABI = [
   {"inputs":[],"stateMutability":"nonpayable","type":"constructor"},
@@ -112,6 +114,75 @@ function Toast({ toasts }) {
 }
 
 // ── Navbar ────────────────────────────────────────────────────────────────────
+function ConnectWalletModal({ open, connectingMethod, hasWalletConnectProject, onClose, onConnectInjected, onConnectWalletConnect }) {
+  if (!open) return null;
+
+  const isConnecting = Boolean(connectingMethod);
+
+  return (
+    <div className="fixed inset-0 z-[70] flex items-center justify-center px-4">
+      <button
+        type="button"
+        aria-label="Close wallet connection options"
+        className="absolute inset-0 bg-black/75 backdrop-blur-sm"
+        onClick={onClose}
+      />
+      <div className="relative w-full max-w-md rounded-2xl border border-[#D4AF37]/25 bg-[#111111] p-5 shadow-2xl">
+        <div className="flex items-start justify-between gap-4 mb-5">
+          <div>
+            <div className="text-[#D4AF37] text-xs uppercase tracking-widest font-semibold mb-1">Connect Wallet</div>
+            <h2 className="text-white text-xl font-bold">Choose connection method</h2>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="btn-ghost w-9 h-9 rounded-lg text-lg leading-none"
+            aria-label="Close"
+          >
+            x
+          </button>
+        </div>
+
+        <div className="grid gap-3">
+          <button
+            type="button"
+            onClick={onConnectInjected}
+            disabled={isConnecting}
+            className="connect-option"
+          >
+            <span className="connect-option-icon">WEB</span>
+            <span className="text-left">
+              <span className="block text-white font-semibold">Browser Wallet</span>
+              <span className="block text-white/45 text-xs mt-0.5">MetaMask, Coinbase Wallet, Rabby, Trust Wallet</span>
+            </span>
+            {connectingMethod === 'injected' && <span className="connect-spinner" />}
+          </button>
+
+          <button
+            type="button"
+            onClick={onConnectWalletConnect}
+            disabled={isConnecting || !hasWalletConnectProject}
+            className={`connect-option ${!hasWalletConnectProject ? 'opacity-60 cursor-not-allowed' : ''}`}
+          >
+            <span className="connect-option-icon">QR</span>
+            <span className="text-left">
+              <span className="block text-white font-semibold">WalletConnect QR</span>
+              <span className="block text-white/45 text-xs mt-0.5">Scan with a mobile wallet or open a wallet app</span>
+            </span>
+            {connectingMethod === 'walletconnect' && <span className="connect-spinner" />}
+          </button>
+        </div>
+
+        {!hasWalletConnectProject && (
+          <p className="mt-4 rounded-xl border border-red-500/25 bg-red-950/30 px-3 py-2 text-xs text-red-200">
+            Add VITE_WALLETCONNECT_PROJECT_ID in Vercel to enable QR connections.
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function Navbar({ account, chainId, onConnect, onDisconnect, onSwitch }) {
   const wrongNetwork = account && chainId !== TARGET_CHAIN_ID;
   return (
@@ -955,7 +1026,7 @@ function getEvmProviders() {
   return providers.filter((provider, index, self) => {
     if (!provider) return false;
     const key = `${provider?.isMetaMask ? 'metamask' : ''}${provider?.isCoinbaseWallet ? 'coinbase' : ''}${provider?.isTrust ? 'trust' : ''}${provider?.isRabby ? 'rabby' : ''}${provider?.uuid || provider?.chainId || ''}`;
-    return self.findIndex(candidate => `${candidate?.isMetaMask ? 'metamask' : ''}${candidate?.isCoinbaseWallet ? 'coinbase' : ''}${candidate?.isTrust ? 'trust' : ''}${candidate?.isRabby ? 'rabby' : ''}${candidate?.uuid || candidate?.chainId || ''}` === key);
+    return self.findIndex(candidate => `${candidate?.isMetaMask ? 'metamask' : ''}${candidate?.isCoinbaseWallet ? 'coinbase' : ''}${candidate?.isTrust ? 'trust' : ''}${candidate?.isRabby ? 'rabby' : ''}${candidate?.uuid || candidate?.chainId || ''}` === key) === index;
   });
 }
 
@@ -971,6 +1042,29 @@ function getPreferredProvider() {
 }
 
 // ── Main App ──────────────────────────────────────────────────────────────────
+async function createWalletConnectProvider() {
+  if (!WALLETCONNECT_PROJECT_ID) {
+    throw new Error('WalletConnect is not configured. Add VITE_WALLETCONNECT_PROJECT_ID in Vercel.');
+  }
+
+  const { default: EthereumProvider } = await import('@walletconnect/ethereum-provider');
+  return EthereumProvider.init({
+    projectId: WALLETCONNECT_PROJECT_ID,
+    chains: [TARGET_CHAIN_ID],
+    optionalChains: [TARGET_CHAIN_ID],
+    showQrModal: true,
+    rpcMap: {
+      [TARGET_CHAIN_ID]: POLYGON_RPC_URL,
+    },
+    metadata: {
+      name: 'WealthCoin',
+      description: 'WealthCoin DApp on Polygon',
+      url: window.location.origin,
+      icons: [`${window.location.origin}/preview.png`],
+    },
+  });
+}
+
 export default function App() {
   const [account, setAccount] = useState(null);
   const [chainId, setChainId] = useState(null);
@@ -983,7 +1077,10 @@ export default function App() {
   const [tokensPerMatic, setTokensPerMatic] = useState(null);
   const [toasts, setToasts] = useState([]);
   const [allowance, setAllowance] = useState('0');
+  const [connectModalOpen, setConnectModalOpen] = useState(false);
+  const [connectingMethod, setConnectingMethod] = useState(null);
   const providerRef = useRef(null);
+  const walletConnectProviderRef = useRef(null);
 
   const addToast = useCallback((msg, type = 'info') => {
     const id = Date.now();
@@ -993,9 +1090,10 @@ export default function App() {
 
   const loadContractData = useCallback(async (addr) => {
     try {
-      const rawProvider = window.__qdapp_getProvider ? await window.__qdapp_getProvider() : window.ethereum;
-      if (!rawProvider) return;
-      const provider = new ethers.BrowserProvider(rawProvider);
+      // Always use a direct RPC provider for reads — never the wallet provider.
+      // WalletConnect routes eth_call through its relay which is slow and can
+      // return stale/zero data. The JsonRpcProvider hits Polygon directly.
+      const provider = new ethers.JsonRpcProvider(POLYGON_RPC_URL);
       const contract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, provider);
 
       const queries = [
@@ -1025,9 +1123,33 @@ export default function App() {
     }
   }, []);
 
-  const connect = useCallback(async () => {
+  const connect = useCallback(async (method = 'injected') => {
+    setConnectingMethod(method);
     try {
-      const preferredProvider = window.__qdapp_getProvider ? await window.__qdapp_getProvider() : getPreferredProvider();
+      let preferredProvider;
+
+      if (method === 'walletconnect') {
+        preferredProvider = walletConnectProviderRef.current || await createWalletConnectProvider();
+        walletConnectProviderRef.current = preferredProvider;
+        providerRef.current = preferredProvider;
+        await preferredProvider.connect();
+        // After WalletConnect .connect() the session is established;
+        // accounts and chainId are already populated on the provider.
+        const wcAccounts = preferredProvider.accounts ?? [];
+        if (!wcAccounts.length) {
+          addToast('No wallet account was selected.', 'error');
+          return;
+        }
+        const wcChainId = preferredProvider.chainId ?? TARGET_CHAIN_ID;
+        setAccount(wcAccounts[0]);
+        setChainId(typeof wcChainId === 'string' ? parseInt(wcChainId, 16) : wcChainId);
+        setConnectModalOpen(false);
+        await loadContractData(wcAccounts[0]);
+        return;
+      } else {
+        preferredProvider = getPreferredProvider();
+      }
+
       if (!preferredProvider) {
         addToast('No compatible wallet detected. Please install MetaMask, Coinbase Wallet, Rabby, Trust Wallet, or another EVM wallet and try again.', 'error');
         return;
@@ -1043,6 +1165,7 @@ export default function App() {
       const chainHex = await preferredProvider.request({ method: 'eth_chainId' });
       setAccount(accounts[0]);
       setChainId(parseInt(chainHex, 16));
+      setConnectModalOpen(false);
       await loadContractData(accounts[0]);
     } catch (e) {
       if (e?.code === 4001) {
@@ -1050,10 +1173,19 @@ export default function App() {
       } else {
         addToast(e?.message || 'Connection failed', 'error');
       }
+    } finally {
+      setConnectingMethod(null);
     }
   }, [addToast, loadContractData]);
 
-  const disconnect = useCallback(() => {
+  const disconnect = useCallback(async () => {
+    try {
+      await walletConnectProviderRef.current?.disconnect?.();
+    } catch (e) {
+      console.warn('WalletConnect disconnect warning:', e);
+    }
+    walletConnectProviderRef.current = null;
+    providerRef.current = null;
     setAccount(null);
     setChainId(null);
     setMaticBalance('0');
@@ -1082,7 +1214,7 @@ export default function App() {
               chainId: CHAIN_HEX,
               chainName: 'Polygon Mainnet',
               nativeCurrency: { name: 'MATIC', symbol: 'MATIC', decimals: 18 },
-              rpcUrls: ['https://polygon-rpc.com/'],
+              rpcUrls: [POLYGON_RPC_URL],
               blockExplorerUrls: ['https://polygonscan.com/'],
             }],
           });
@@ -1096,10 +1228,17 @@ export default function App() {
     }
   }, [addToast]);
 
+  useEffect(() => {
+    window.__qdapp_getProvider = async () => providerRef.current || getPreferredProvider();
+    return () => {
+      if (window.__qdapp_getProvider) delete window.__qdapp_getProvider;
+    };
+  }, []);
+
   // Listen for account/chain changes
   useEffect(() => {
     const setup = async () => {
-      const preferredProvider = window.__qdapp_getProvider ? await window.__qdapp_getProvider() : getPreferredProvider();
+      const preferredProvider = getPreferredProvider();
       if (!preferredProvider) return;
 
       providerRef.current = preferredProvider;
@@ -1145,18 +1284,26 @@ export default function App() {
   return (
     <div className="min-h-screen bg-[#0A0A0A]">
       <Toast toasts={toasts} />
-      <Navbar account={account} chainId={chainId} onConnect={connect} onDisconnect={disconnect} onSwitch={switchNetwork} />
-      <Hero account={account} onConnect={connect} />
+      <ConnectWalletModal
+        open={connectModalOpen}
+        connectingMethod={connectingMethod}
+        hasWalletConnectProject={Boolean(WALLETCONNECT_PROJECT_ID)}
+        onClose={() => setConnectModalOpen(false)}
+        onConnectInjected={() => connect('injected')}
+        onConnectWalletConnect={() => connect('walletconnect')}
+      />
+      <Navbar account={account} chainId={chainId} onConnect={() => setConnectModalOpen(true)} onDisconnect={disconnect} onSwitch={switchNetwork} />
+      <Hero account={account} onConnect={() => setConnectModalOpen(true)} />
       <WalletPanel
         account={account} chainId={chainId}
         maticBalance={maticBalance} wlthBalance={wlthBalance}
         stakedBal={stakedBal} pendingRew={pendingRew}
-        onConnect={connect} onSwitch={switchNetwork}
+        onConnect={() => setConnectModalOpen(true)} onSwitch={switchNetwork}
       />
       <BuySection
         account={account} chainId={chainId}
         tokensPerMatic={tokensPerMatic} totalSupply={totalSupply}
-        addToast={addToast} onConnect={connect}
+        addToast={addToast} onConnect={() => setConnectModalOpen(true)}
       />
       <AboutSection />
       <CommunityResourcesSection />
@@ -1164,7 +1311,7 @@ export default function App() {
         account={account} chainId={chainId}
         wlthBalance={wlthBalance} stakedBal={stakedBal}
         pendingRew={pendingRew} totalStaked={totalStaked}
-        addToast={addToast} onConnect={connect}
+        addToast={addToast} onConnect={() => setConnectModalOpen(true)}
       />
       <TokenomicsSection />
       <Footer addToast={addToast} />
