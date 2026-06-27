@@ -389,35 +389,46 @@ function WalletPanel({ account, maticBalance, wlthBalance, stakedBal, pendingRew
   }
 
   return (
-    <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-      <div className="card-gold p-5 rounded-2xl">
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-[#D4AF37]/20 border border-[#D4AF37]/40 flex items-center justify-center">
-              <span className="text-[#D4AF37] font-bold text-sm">WTC</span>
-            </div>
-            <div>
-              <div className="text-white/50 text-xs">Connected Wallet</div>
-              <div className="text-[#D4AF37] font-mono text-sm font-medium">{shortAddr(account)}</div>
-            </div>
+    <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+      <div className="rounded-2xl border border-[#D4AF37]/25 bg-[#D4AF37]/5 px-5 py-4 flex flex-wrap items-center justify-between gap-4">
+        {/* Address */}
+        <div className="flex items-center gap-2">
+          <span className="w-2 h-2 rounded-full bg-[#00C853] animate-pulse"></span>
+          <span className="text-white/40 text-xs uppercase tracking-wider">Wallet</span>
+          <span className="text-[#D4AF37] font-mono text-sm">{shortAddr(account)}</span>
+        </div>
+
+        {/* Balances */}
+        <div className="flex flex-wrap gap-x-8 gap-y-2">
+          <div className="text-center">
+            <div className="text-white/40 text-xs uppercase tracking-wider mb-0.5">POL</div>
+            <div className="text-white font-bold text-base">{Number(maticBalance).toFixed(4)}</div>
           </div>
-          <div className="flex items-center gap-3">
-            {wrongNetwork && (
-              <button onClick={onSwitch} className="btn-danger px-4 py-2 rounded-lg text-sm font-semibold">
-                ⚠ Switch to Polygon
-              </button>
-            )}
-            <button onClick={handleRefresh} disabled={refreshing}
-              className="px-3 py-1.5 rounded-lg border border-[#D4AF37]/30 text-[#D4AF37]/60 hover:text-[#D4AF37] hover:border-[#D4AF37]/60 transition-all text-xs">
-              {refreshing ? '↻ Loading…' : '↻ Refresh'}
+          <div className="text-center">
+            <div className="text-white/40 text-xs uppercase tracking-wider mb-0.5">WTC Held</div>
+            <div className="text-[#FFD700] font-bold text-base">{wlthBalance || '—'}</div>
+          </div>
+          <div className="text-center">
+            <div className="text-white/40 text-xs uppercase tracking-wider mb-0.5">WTC Staked</div>
+            <div className="text-[#00C853] font-bold text-base">{stakedBal || '—'}</div>
+          </div>
+          <div className="text-center">
+            <div className="text-white/40 text-xs uppercase tracking-wider mb-0.5">Rewards</div>
+            <div className="text-[#00C853] font-bold text-base">{pendingRew || '—'}</div>
+          </div>
+        </div>
+
+        {/* Actions */}
+        <div className="flex items-center gap-2">
+          {wrongNetwork && (
+            <button onClick={onSwitch} className="btn-danger px-3 py-1.5 rounded-lg text-xs font-semibold">
+              ⚠ Switch to Polygon
             </button>
-          </div>
-          <div className="flex flex-wrap gap-6">
-            <Stat label="POL Balance" value={Number(maticBalance).toFixed(4)} unit="POL" color="white" />
-            <Stat label="WTC Balance" value={wlthBalance} unit="WTC" color="gold" />
-            <Stat label="Staked" value={stakedBal} unit="WTC" color="green" />
-            <Stat label="Pending Rewards" value={pendingRew} unit="WTC" color="green" />
-          </div>
+          )}
+          <button onClick={handleRefresh} disabled={refreshing}
+            className="px-3 py-1.5 rounded-lg border border-[#D4AF37]/30 text-[#D4AF37]/60 hover:text-[#D4AF37] hover:border-[#D4AF37]/60 transition-all text-xs">
+            {refreshing ? '↻ …' : '↻ Refresh'}
+          </button>
         </div>
       </div>
     </section>
@@ -435,7 +446,7 @@ function Stat({ label, value, unit, color }) {
 }
 
 // ── Buy Section ───────────────────────────────────────────────────────────────
-function BuySection({ account, chainId, tokensPerMatic, totalSupply, polUsdPrice, addToast, onConnect }) {
+function BuySection({ account, chainId, tokensPerMatic, totalSupply, polUsdPrice, wlthBalance, maticBalance, addToast, onConnect }) {
   const [maticAmt, setMaticAmt] = useState('');
   const [loading, setLoading] = useState(false);
   const wrongNetwork = account && chainId !== TARGET_CHAIN_ID;
@@ -489,71 +500,126 @@ function BuySection({ account, chainId, tokensPerMatic, totalSupply, polUsdPrice
     }
   }
 
+  // Presale progress: tokens sold = totalSupply - circulating (we use totalSupply as cap, sold derived from on-chain supply)
+  const PRESALE_HARD_CAP = 7_500_000_000;
+  const soldRaw = totalSupply ? parseFloat(totalSupply.replace(/,/g, '')) : 0;
+  const pct = Math.min((soldRaw / PRESALE_HARD_CAP) * 100, 100);
+
   return (
-    <section id="buy" className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
-      <SectionLabel>Purchase</SectionLabel>
-      <h2 className="section-title mb-12">Buy <span className="gold-text">WTC</span> with POL</h2>
+    <section id="buy" className="max-w-2xl mx-auto px-4 sm:px-6 py-16">
+      <SectionLabel>Presale</SectionLabel>
 
-      <div className="grid lg:grid-cols-2 gap-8 items-start">
-        {/* Buy card */}
-        <div className="card-glass p-8 rounded-2xl border border-[#D4AF37]/20">
-          <h3 className="text-white font-semibold text-lg mb-6">Purchase WealthCoin</h3>
+      {/* Main presale widget */}
+      <div className="rounded-3xl border border-[#D4AF37]/30 bg-[#0f0f0f] overflow-hidden">
 
-          <div className="space-y-4">
+        {/* Header bar */}
+        <div className="bg-[#D4AF37]/10 border-b border-[#D4AF37]/20 px-6 py-4 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-[#00C853] animate-pulse"></span>
+            <span className="text-[#D4AF37] font-semibold text-sm uppercase tracking-widest">WTC Presale — Live</span>
+          </div>
+          <div className="flex items-center gap-1.5 text-xs text-white/40">
+            <span className="w-1.5 h-1.5 rounded-full bg-[#00C853] animate-pulse"></span>
+            Polygon Network
+          </div>
+        </div>
+
+        <div className="px-6 py-6 space-y-6">
+
+          {/* Price row */}
+          <div className="flex items-end justify-between">
             <div>
-              <label className="text-white/50 text-xs mb-2 block uppercase tracking-wider">Amount (POL)</label>
-              <div className="relative">
-                <input
-                  type="number"
-                  min="0"
-                  step="0.1"
-                  value={maticAmt}
-                  onChange={e => setMaticAmt(e.target.value)}
-                  placeholder="0.0"
-                  className="input-gold w-full pr-20"
-                />
-  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[#D4AF37]/60 text-sm font-medium">POL</span>
+              <div className="text-white/40 text-xs uppercase tracking-wider mb-1">Current Price</div>
+              <div className="text-[#FFD700] font-bold text-4xl leading-none">
+                {fmtWtcPrice(wtcUsdPrice) ?? '$0.00000015'}
+              </div>
+              <div className="text-white/30 text-xs mt-1.5 flex items-center gap-1">
+                {tokensPerMatic ? `1 POL = ${Number(tokensPerMatic).toLocaleString()} WTC` : 'Loading rate…'}
+                {wtcUsdPrice && <span className="w-1.5 h-1.5 rounded-full bg-[#00C853] animate-pulse ml-1"></span>}
               </div>
             </div>
+            <div className="text-right">
+              <div className="text-white/40 text-xs uppercase tracking-wider mb-1">Moon Goal</div>
+              <div className="text-[#00C853] font-bold text-2xl">$0.75</div>
+              <div className="text-white/30 text-xs mt-0.5">$5.625B market cap</div>
+            </div>
+          </div>
 
-            {/* Estimated output */}
-            <div className="bg-[#00C853]/5 border border-[#00C853]/20 rounded-xl p-4">
-              <div className="flex justify-between items-center">
-                <span className="text-white/50 text-sm">You receive (estimated)</span>
-                <span className="text-[#00C853] font-bold text-lg">{estimated} <span className="text-sm font-normal">WTC</span></span>
+          {/* Progress bar */}
+          <div>
+            <div className="flex justify-between text-xs text-white/40 mb-2">
+              <span>Tokens Distributed</span>
+              <span>{pct.toFixed(2)}% of 7.5B</span>
+            </div>
+            <div className="h-3 rounded-full bg-white/5 border border-white/10 overflow-hidden">
+              <div className="h-full rounded-full bg-gradient-to-r from-[#D4AF37] to-[#FFD700] transition-all duration-700"
+                style={{ width: `${Math.max(pct, 0.5)}%` }} />
+            </div>
+            <div className="flex justify-between text-xs mt-2">
+              <span className="text-[#D4AF37]/70">{totalSupply || '—'} WTC distributed</span>
+              <span className="text-white/30">7,500,000,000 total</span>
+            </div>
+          </div>
+
+          {/* Your holdings (shown when connected) */}
+          {account && (
+            <div className="grid grid-cols-2 gap-3">
+              <div className="rounded-xl bg-white/5 border border-white/10 px-4 py-3">
+                <div className="text-white/40 text-xs uppercase tracking-wider mb-1">Your WTC</div>
+                <div className="text-[#FFD700] font-bold text-xl">{wlthBalance || '—'}</div>
               </div>
-              {tokensPerMatic && (
-                <div className="text-white/30 text-xs mt-1">Rate: 1 POL = {Number(tokensPerMatic).toLocaleString()} WTC</div>
-              )}
-              {fmtWtcPrice(wtcUsdPrice) && (
-                <div className="text-white/30 text-xs mt-0.5">
-                  1 WTC ≈ {fmtWtcPrice(wtcUsdPrice)} USD
-                  <span className="ml-1 text-white/20">(live)</span>
-                </div>
-              )}
+              <div className="rounded-xl bg-white/5 border border-white/10 px-4 py-3">
+                <div className="text-white/40 text-xs uppercase tracking-wider mb-1">Your POL</div>
+                <div className="text-white font-bold text-xl">{Number(maticBalance).toFixed(4)}</div>
+              </div>
+            </div>
+          )}
+
+          {/* Divider */}
+          <div className="h-px bg-white/10" />
+
+          {/* Buy form */}
+          <div className="space-y-3">
+            <div className="relative">
+              <input
+                type="number"
+                min="0"
+                step="0.1"
+                value={maticAmt}
+                onChange={e => setMaticAmt(e.target.value)}
+                placeholder="0.0"
+                className="input-gold w-full pr-20 text-lg"
+              />
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[#D4AF37]/60 text-sm font-medium">POL</span>
             </div>
 
             {/* Quick amounts */}
-            <div className="flex gap-2 flex-wrap">
-{['10', '100', '500', '1000'].map(v => (
+            <div className="flex gap-2">
+              {['10', '100', '500', '1000'].map(v => (
                 <button key={v} onClick={() => setMaticAmt(v)}
-                  className="px-3 py-1.5 rounded-lg text-xs border border-[#D4AF37]/20 text-[#D4AF37]/60 hover:border-[#D4AF37]/60 hover:text-[#D4AF37] transition-all">
-                  {v} POL
+                  className="flex-1 py-1.5 rounded-lg text-xs border border-[#D4AF37]/20 text-[#D4AF37]/50 hover:border-[#D4AF37]/60 hover:text-[#D4AF37] transition-all">
+                  {v}
                 </button>
               ))}
             </div>
 
+            {/* Estimated receive */}
+            <div className="rounded-xl bg-[#00C853]/5 border border-[#00C853]/20 px-4 py-3 flex justify-between items-center">
+              <span className="text-white/40 text-sm">You receive</span>
+              <span className="text-[#00C853] font-bold text-lg">{estimated || '0'} <span className="text-sm font-normal text-white/30">WTC</span></span>
+            </div>
+
             {!account ? (
-              <button onClick={onConnect} className="btn-gold w-full py-3.5 rounded-xl font-bold text-base">
+              <button onClick={onConnect} className="btn-gold w-full py-4 rounded-xl font-bold text-base">
                 Connect Wallet to Buy
               </button>
             ) : wrongNetwork ? (
-              <button disabled className="btn-disabled w-full py-3.5 rounded-xl font-bold text-base">
+              <button disabled className="btn-disabled w-full py-4 rounded-xl font-bold text-base">
                 Switch to Polygon First
               </button>
             ) : (
               <button onClick={handleBuy} disabled={loading}
-                className={`w-full py-3.5 rounded-xl font-bold text-base transition-all ${loading ? 'btn-disabled' : 'btn-green'}`}>
+                className={`w-full py-4 rounded-xl font-bold text-base transition-all ${loading ? 'btn-disabled' : 'btn-green'}`}>
                 {loading ? (
                   <span className="flex items-center justify-center gap-2">
                     <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
@@ -563,41 +629,11 @@ function BuySection({ account, chainId, tokensPerMatic, totalSupply, polUsdPrice
               </button>
             )}
           </div>
-        </div>
 
-        {/* Info cards */}
-        <div className="space-y-4">
-          <div className="card-glass p-5 rounded-2xl border border-[#D4AF37]/20">
-            <div className="text-white/40 text-xs uppercase tracking-wider mb-1">Total Supply</div>
-            <div className="text-[#FFD700] font-bold text-2xl">{totalSupply || '7,500,000,000'}</div>
-            <div className="text-white/30 text-xs mt-0.5">WTC tokens (7.5 billion)</div>
-          </div>
-          <div className="card-glass p-5 rounded-2xl border border-[#00C853]/20">
-            <div className="text-white/40 text-xs uppercase tracking-wider mb-1">🌙 Moon Goal</div>
-            <div className="text-[#00C853] font-bold text-2xl">$0.75</div>
-            <div className="text-white/30 text-xs mt-0.5">per WTC — $5.625B market cap</div>
-          </div>
-          <div className="card-glass p-5 rounded-2xl border border-[#D4AF37]/20">
-            <div className="text-white/40 text-xs uppercase tracking-wider mb-1">WTC Price</div>
-            <div className="text-[#FFD700] font-bold text-2xl">
-              {fmtWtcPrice(wtcUsdPrice) ?? '—'}
-            </div>
-            <div className="text-white/30 text-xs mt-0.5 flex items-center gap-1">
-              {tokensPerMatic ? `${Number(tokensPerMatic).toLocaleString()} WTC / POL` : 'USD · updates every 60s'}
-              {wtcUsdPrice && <span className="inline-block w-1.5 h-1.5 rounded-full bg-[#00C853] animate-pulse ml-1"></span>}
-            </div>
-          </div>
-          <div className="card-glass p-5 rounded-2xl border border-[#D4AF37]/20">
-            <div className="text-white/40 text-xs uppercase tracking-wider mb-3">Why Buy WTC?</div>
-            <ul className="space-y-2">
-              {['Deflationary — scheduled token burns', 'Staking rewards for holders', 'Team tokens time-locked', 'Faith-based, community-driven'].map(item => (
-                <li key={item} className="flex items-center gap-2 text-white/60 text-sm">
-                  <span className="w-1.5 h-1.5 rounded-full bg-[#00C853] flex-shrink-0"></span>
-                  {item}
-                </li>
-              ))}
-            </ul>
-          </div>
+          {/* Footer note */}
+          <p className="text-white/20 text-xs text-center">
+            Powered by Polygon · Smart contract verified · No hidden fees
+          </p>
         </div>
       </div>
     </section>
@@ -1416,6 +1452,7 @@ export default function App() {
         account={account} chainId={chainId}
         tokensPerMatic={tokensPerMatic} totalSupply={totalSupply}
         polUsdPrice={polUsdPrice}
+        wlthBalance={wlthBalance} maticBalance={maticBalance}
         addToast={addToast} onConnect={() => setConnectModalOpen(true)}
       />
       <AboutSection />
