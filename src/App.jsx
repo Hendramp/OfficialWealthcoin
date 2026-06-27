@@ -422,7 +422,7 @@ function Stat({ label, value, unit, color }) {
 }
 
 // ── Buy Section ───────────────────────────────────────────────────────────────
-function BuySection({ account, chainId, tokensPerMatic, totalSupply, addToast, onConnect }) {
+function BuySection({ account, chainId, tokensPerMatic, totalSupply, polUsdPrice, addToast, onConnect }) {
   const [maticAmt, setMaticAmt] = useState('');
   const [loading, setLoading] = useState(false);
   const wrongNetwork = account && chainId !== TARGET_CHAIN_ID;
@@ -430,6 +430,19 @@ function BuySection({ account, chainId, tokensPerMatic, totalSupply, addToast, o
   const estimated = maticAmt && tokensPerMatic
     ? (parseFloat(maticAmt) * Number(tokensPerMatic)).toLocaleString()
     : '0';
+
+  // Derive live WTC/USD: (POL price in USD) / (WTC per POL)
+  const wtcUsdPrice = polUsdPrice && tokensPerMatic && Number(tokensPerMatic) > 0
+    ? polUsdPrice / Number(tokensPerMatic)
+    : null;
+
+  // Format to up to 10 significant figures for very small prices
+  function fmtWtcPrice(p) {
+    if (!p) return null;
+    if (p >= 0.01) return `$${p.toFixed(4)}`;
+    // Use toPrecision for tiny values, strip trailing zeros
+    return `$${p.toPrecision(4)}`;
+  }
 
   async function handleBuy() {
     if (!maticAmt || parseFloat(maticAmt) <= 0) { addToast('Enter a valid POL amount', 'error'); return; }
@@ -499,6 +512,12 @@ function BuySection({ account, chainId, tokensPerMatic, totalSupply, addToast, o
               {tokensPerMatic && (
                 <div className="text-white/30 text-xs mt-1">Rate: 1 POL = {Number(tokensPerMatic).toLocaleString()} WTC</div>
               )}
+              {fmtWtcPrice(wtcUsdPrice) && (
+                <div className="text-white/30 text-xs mt-0.5">
+                  1 WTC ≈ {fmtWtcPrice(wtcUsdPrice)} USD
+                  <span className="ml-1 text-white/20">(live)</span>
+                </div>
+              )}
             </div>
 
             {/* Quick amounts */}
@@ -546,11 +565,14 @@ function BuySection({ account, chainId, tokensPerMatic, totalSupply, addToast, o
             <div className="text-white/30 text-xs mt-0.5">per WTC — $5.625B market cap</div>
           </div>
           <div className="card-glass p-5 rounded-2xl border border-[#D4AF37]/20">
-            <div className="text-white/40 text-xs uppercase tracking-wider mb-1">Exchange Rate</div>
+            <div className="text-white/40 text-xs uppercase tracking-wider mb-1">WTC Price</div>
             <div className="text-[#FFD700] font-bold text-2xl">
-              {tokensPerMatic ? `${Number(tokensPerMatic).toLocaleString()}` : '—'}
+              {fmtWtcPrice(wtcUsdPrice) ?? '—'}
             </div>
-            <div className="text-white/30 text-xs mt-0.5">WTC per 1 POL</div>
+            <div className="text-white/30 text-xs mt-0.5 flex items-center gap-1">
+              {tokensPerMatic ? `${Number(tokensPerMatic).toLocaleString()} WTC / POL` : 'USD · updates every 60s'}
+              {wtcUsdPrice && <span className="inline-block w-1.5 h-1.5 rounded-full bg-[#00C853] animate-pulse ml-1"></span>}
+            </div>
           </div>
           <div className="card-glass p-5 rounded-2xl border border-[#D4AF37]/20">
             <div className="text-white/40 text-xs uppercase tracking-wider mb-3">Why Buy WTC?</div>
@@ -1095,6 +1117,31 @@ async function createWalletConnectProvider() {
   });
 }
 
+// ── Live POL/USD price hook ───────────────────────────────────────────────────
+function usePolPrice() {
+  const [polUsd, setPolUsd] = useState(null);
+  useEffect(() => {
+    let cancelled = false;
+    async function fetch() {
+      try {
+        const res = await globalThis.fetch(
+          'https://api.coingecko.com/api/v3/simple/price?ids=matic-network&vs_currencies=usd'
+        );
+        const json = await res.json();
+        if (!cancelled && json?.['matic-network']?.usd) {
+          setPolUsd(json['matic-network'].usd);
+        }
+      } catch (e) {
+        console.warn('POL price fetch failed:', e);
+      }
+    }
+    fetch();
+    const interval = setInterval(fetch, 60_000);
+    return () => { cancelled = true; clearInterval(interval); };
+  }, []);
+  return polUsd;
+}
+
 export default function App() {
   const [account, setAccount] = useState(null);
   const [chainId, setChainId] = useState(null);
@@ -1105,6 +1152,7 @@ export default function App() {
   const [totalStaked, setTotalStaked] = useState('0');
   const [totalSupply, setTotalSupply] = useState('');
   const [tokensPerMatic, setTokensPerMatic] = useState(null);
+  const polUsdPrice = usePolPrice();
   const [toasts, setToasts] = useState([]);
   const [allowance, setAllowance] = useState('0');
   const [connectModalOpen, setConnectModalOpen] = useState(false);
@@ -1346,6 +1394,7 @@ export default function App() {
       <BuySection
         account={account} chainId={chainId}
         tokensPerMatic={tokensPerMatic} totalSupply={totalSupply}
+        polUsdPrice={polUsdPrice}
         addToast={addToast} onConnect={() => setConnectModalOpen(true)}
       />
       <AboutSection />
