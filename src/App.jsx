@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { ethers } from 'ethers';
 
 const CONTRACT_ADDRESS = '0x394b57F4a40ff31530d66f904e1Db2C6516c018F';
+const PRESALE_RECEIVER = '0x3032d0adbb3bc432c08866e47604e0ae142ed60e';
 const TARGET_CHAIN_ID = 137;
 const CHAIN_HEX = '0x89';
 const POLYGON_RPC_URLS = [
@@ -446,68 +447,79 @@ function Stat({ label, value, unit, color }) {
 }
 
 // ── Buy Section ───────────────────────────────────────────────────────────────
-function BuySection({ account, chainId, tokensPerMatic, totalSupply, polUsdPrice, wlthBalance, maticBalance, addToast, onConnect }) {
-  const [maticAmt, setMaticAmt] = useState('');
+function BuySection({ account, chainId, totalSupply, polUsdPrice, wlthBalance, maticBalance, addToast, onConnect }) {
+  const [polAmt, setPolAmt] = useState('');
   const [loading, setLoading] = useState(false);
+  const [txHash, setTxHash] = useState('');
   const wrongNetwork = account && chainId !== TARGET_CHAIN_ID;
 
-  const estimated = maticAmt && tokensPerMatic
-    ? (parseFloat(maticAmt) * Number(tokensPerMatic)).toLocaleString()
+  // 1 POL = 1 WTC during presale
+  const wtcReceived = polAmt && parseFloat(polAmt) > 0
+    ? parseFloat(polAmt).toLocaleString(undefined, { maximumFractionDigits: 4 })
     : '0';
 
-  // Derive live WTC/USD: (POL price in USD) / (WTC per POL)
-  const wtcUsdPrice = polUsdPrice && tokensPerMatic && Number(tokensPerMatic) > 0
-    ? polUsdPrice / Number(tokensPerMatic)
-    : null;
+  // Live WTC price in USD = POL price (since 1 WTC = 1 POL)
+  const wtcUsdPrice = polUsdPrice ? polUsdPrice : null;
 
-  // Format to up to 10 significant figures for very small prices
-  function fmtWtcPrice(p) {
+  function fmtPrice(p) {
     if (!p) return null;
     if (p >= 0.01) return `$${p.toFixed(4)}`;
-    // Use toPrecision for tiny values, strip trailing zeros
     return `$${p.toPrecision(4)}`;
   }
 
+  const PRESALE_HARD_CAP = 1_000_000_000;
+  const soldRaw = totalSupply ? parseFloat(totalSupply.replace(/,/g, '')) : 0;
+  const pct = Math.min((soldRaw / PRESALE_HARD_CAP) * 100, 100);
+
+  // USD value of what user is spending
+  const usdValue = polAmt && polUsdPrice
+    ? (parseFloat(polAmt) * polUsdPrice).toFixed(2)
+    : null;
+
   async function handleBuy() {
-    if (!maticAmt || parseFloat(maticAmt) <= 0) { addToast('Enter a valid POL amount', 'error'); return; }
+    if (!polAmt || parseFloat(polAmt) <= 0) {
+      addToast('Enter a valid POL amount', 'error');
+      return;
+    }
     setLoading(true);
+    setTxHash('');
     try {
-      const rawProvider = window.__qdapp_getProvider ? await window.__qdapp_getProvider() : window.ethereum;
-      if (!rawProvider) throw new Error('No wallet provider found. Please reconnect your wallet.');
+      const rawProvider = window.__qdapp_getProvider
+        ? await window.__qdapp_getProvider()
+        : window.ethereum;
+      if (!rawProvider) throw new Error('No wallet found. Please reconnect.');
+
       const provider = new ethers.BrowserProvider(rawProvider);
       const signer = await provider.getSigner();
-
-      // Read POL balance directly from wallet provider — reliable regardless of RPC state
       const signerAddr = await signer.getAddress();
+
+      // Check balance from wallet directly
       const polBalWei = await provider.getBalance(signerAddr);
       const polBal = parseFloat(ethers.formatEther(polBalWei));
-      const maticValue = parseFloat(maticAmt);
-      if (maticValue > polBal) {
-        addToast(`Insufficient POL balance. You have ${polBal.toFixed(4)} POL`, 'error');
+      const polValue = parseFloat(polAmt);
+      if (polValue > polBal) {
+        addToast(`Insufficient POL. You have ${polBal.toFixed(4)} POL`, 'error');
         setLoading(false);
         return;
       }
 
-      const contract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, signer);
-      const value = ethers.parseEther(maticAmt);
-      addToast('Confirm transaction in wallet…', 'info');
-      const tx = await contract.buy({ value });
-      addToast(`Transaction submitted: ${shortAddr(tx.hash)}`, 'info');
+      // Send POL directly to presale wallet — no contract call needed
+      addToast('Confirm the transaction in your wallet…', 'info');
+      const tx = await signer.sendTransaction({
+        to: PRESALE_RECEIVER,
+        value: ethers.parseEther(polAmt),
+      });
+
+      setTxHash(tx.hash);
+      addToast(`Transaction sent! Waiting for confirmation…`, 'info');
       await tx.wait();
-      addToast(`Successfully purchased WTC! TX: ${shortAddr(tx.hash)}`, 'success');
-      setMaticAmt('');
-      // Refresh balances via wallet provider directly after purchase
-      const [newPolBal, newWtcBal] = await Promise.allSettled([
-        provider.getBalance(signerAddr),
-        new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, provider).balanceOf(signerAddr),
-      ]);
-      if (newPolBal.status === 'fulfilled') setMaticBalance(ethers.formatEther(newPolBal.value));
-      if (newWtcBal.status === 'fulfilled') setWlthBalance(fmt(newWtcBal.value));
+      addToast(`✅ Payment confirmed! You will receive ${wtcReceived} WTC. TX: ${shortAddr(tx.hash)}`, 'success');
+      setPolAmt('');
     } catch (e) {
-      if (e?.code === 'INSUFFICIENT_FUNDS') {
-        addToast('Insufficient gas funds to complete transaction', 'error');
-      } else if (e?.reason) {
-        addToast(`Transaction failed: ${e.reason}`, 'error');
+      if (e?.code === 4001 || e?.code === 'ACTION_REJECTED') {
+        addToast('Transaction cancelled.', 'error');
+      } else if (e?.code === 'INSUFFICIENT_FUNDS') {
+        addToast('Insufficient funds for gas + amount.', 'error');
       } else {
         addToast(e?.message || 'Transaction failed', 'error');
       }
@@ -516,140 +528,190 @@ function BuySection({ account, chainId, tokensPerMatic, totalSupply, polUsdPrice
     }
   }
 
-  // Presale progress: tokens sold = totalSupply - circulating (we use totalSupply as cap, sold derived from on-chain supply)
-  const PRESALE_HARD_CAP = 1_000_000_000;
-  const soldRaw = totalSupply ? parseFloat(totalSupply.replace(/,/g, '')) : 0;
-  const pct = Math.min((soldRaw / PRESALE_HARD_CAP) * 100, 100);
-
   return (
-    <section id="buy" className="max-w-2xl mx-auto px-4 sm:px-6 py-16">
+    <section id="buy" className="max-w-xl mx-auto px-4 sm:px-6 py-16">
       <SectionLabel>Presale</SectionLabel>
 
-      {/* Main presale widget */}
-      <div className="rounded-3xl border border-[#D4AF37]/30 bg-[#0f0f0f] overflow-hidden">
+      <div className="rounded-2xl overflow-hidden border border-[#D4AF37]/25 bg-[#0d0d0d] shadow-[0_0_60px_rgba(212,175,55,0.07)]">
 
-        {/* Header bar */}
-        <div className="bg-[#D4AF37]/10 border-b border-[#D4AF37]/20 px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-[#00C853] animate-pulse"></span>
-            <span className="text-[#D4AF37] font-semibold text-sm uppercase tracking-widest">WTC Presale — Live</span>
+        {/* Header */}
+        <div className="px-6 py-4 bg-gradient-to-r from-[#D4AF37]/10 to-transparent border-b border-[#D4AF37]/15 flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <span className="relative flex h-2.5 w-2.5">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#00C853] opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-[#00C853]"></span>
+            </span>
+            <span className="text-[#D4AF37] font-bold text-sm tracking-widest uppercase">WealthCoin Presale</span>
           </div>
-          <div className="flex items-center gap-1.5 text-xs text-white/40">
-            <span className="w-1.5 h-1.5 rounded-full bg-[#00C853] animate-pulse"></span>
-            Polygon Network
-          </div>
+          <span className="text-[10px] font-medium text-white/30 uppercase tracking-wider border border-white/10 rounded-full px-2.5 py-1">
+            Phase 1
+          </span>
         </div>
 
-        <div className="px-6 py-6 space-y-6">
+        <div className="px-6 pt-6 pb-8 space-y-5">
 
-          {/* Price row */}
-          <div className="flex items-end justify-between">
-            <div>
-              <div className="text-white/40 text-xs uppercase tracking-wider mb-1">Current Price</div>
-              <div className="text-[#FFD700] font-bold text-4xl leading-none">
-                {fmtWtcPrice(wtcUsdPrice) ?? '$0.00000015'}
+          {/* Price + Moon Goal */}
+          <div className="grid grid-cols-2 gap-3">
+            <div className="rounded-xl bg-white/[0.03] border border-[#D4AF37]/15 px-4 py-3.5">
+              <div className="text-white/35 text-[10px] uppercase tracking-widest mb-1.5">Price per WTC</div>
+              <div className="text-[#FFD700] font-bold text-2xl leading-none">
+                {fmtPrice(wtcUsdPrice) ?? '—'}
               </div>
-              <div className="text-white/30 text-xs mt-1.5 flex items-center gap-1">
-                {tokensPerMatic ? `1 POL = ${Number(tokensPerMatic).toLocaleString()} WTC` : 'Loading rate…'}
-                {wtcUsdPrice && <span className="w-1.5 h-1.5 rounded-full bg-[#00C853] animate-pulse ml-1"></span>}
+              <div className="flex items-center gap-1 mt-1.5">
+                <span className="text-white/25 text-[10px]">1 WTC = 1 POL</span>
+                {wtcUsdPrice && <span className="w-1.5 h-1.5 rounded-full bg-[#00C853] animate-pulse"></span>}
               </div>
             </div>
-            <div className="text-right">
-              <div className="text-white/40 text-xs uppercase tracking-wider mb-1">Moon Goal</div>
-              <div className="text-[#00C853] font-bold text-2xl">$0.75</div>
-              <div className="text-white/30 text-xs mt-0.5">$750M market cap</div>
+            <div className="rounded-xl bg-white/[0.03] border border-[#00C853]/20 px-4 py-3.5">
+              <div className="text-white/35 text-[10px] uppercase tracking-widest mb-1.5">🌙 Moon Goal</div>
+              <div className="text-[#00C853] font-bold text-2xl leading-none">$0.75</div>
+              <div className="text-white/25 text-[10px] mt-1.5">$750M market cap</div>
             </div>
           </div>
 
-          {/* Progress bar */}
-          <div>
-            <div className="flex justify-between text-xs text-white/40 mb-2">
-              <span>Tokens Distributed</span>
-              <span>{pct.toFixed(2)}% of 1B</span>
+          {/* Progress */}
+          <div className="rounded-xl bg-white/[0.03] border border-white/8 px-4 py-4">
+            <div className="flex justify-between items-center mb-3">
+              <span className="text-white/40 text-xs font-medium">Presale Progress</span>
+              <span className="text-[#D4AF37] text-xs font-bold">{pct.toFixed(2)}%</span>
             </div>
-            <div className="h-3 rounded-full bg-white/5 border border-white/10 overflow-hidden">
-              <div className="h-full rounded-full bg-gradient-to-r from-[#D4AF37] to-[#FFD700] transition-all duration-700"
-                style={{ width: `${Math.max(pct, 0.5)}%` }} />
+            <div className="h-2.5 rounded-full bg-white/5 overflow-hidden">
+              <div className="h-full rounded-full bg-gradient-to-r from-[#B8860B] via-[#D4AF37] to-[#FFD700] transition-all duration-700"
+                style={{ width: `${Math.max(pct, 0.8)}%` }} />
             </div>
-            <div className="flex justify-between text-xs mt-2">
-              <span className="text-[#D4AF37]/70">{totalSupply || '—'} WTC distributed</span>
-              <span className="text-white/30">1,000,000,000 total</span>
+            <div className="flex justify-between mt-2.5 text-[10px]">
+              <span className="text-[#D4AF37]/60">{totalSupply || '0'} WTC sold</span>
+              <span className="text-white/25">1,000,000,000 WTC total</span>
             </div>
           </div>
 
-          {/* Your holdings (shown when connected) */}
+          {/* Your balances (when connected) */}
           {account && (
             <div className="grid grid-cols-2 gap-3">
-              <div className="rounded-xl bg-white/5 border border-white/10 px-4 py-3">
-                <div className="text-white/40 text-xs uppercase tracking-wider mb-1">Your WTC</div>
-                <div className="text-[#FFD700] font-bold text-xl">{wlthBalance || '—'}</div>
+              <div className="rounded-xl bg-white/[0.03] border border-[#D4AF37]/15 px-4 py-3 flex items-center gap-3">
+                <div className="w-8 h-8 rounded-full bg-[#D4AF37]/10 border border-[#D4AF37]/20 flex items-center justify-center flex-shrink-0">
+                  <span className="text-[#D4AF37] text-[10px] font-bold">WTC</span>
+                </div>
+                <div>
+                  <div className="text-white/35 text-[10px] uppercase tracking-wider">Your WTC</div>
+                  <div className="text-[#FFD700] font-bold text-base leading-tight">{wlthBalance || '—'}</div>
+                </div>
               </div>
-              <div className="rounded-xl bg-white/5 border border-white/10 px-4 py-3">
-                <div className="text-white/40 text-xs uppercase tracking-wider mb-1">Your POL</div>
-                <div className="text-white font-bold text-xl">{Number(maticBalance).toFixed(4)}</div>
+              <div className="rounded-xl bg-white/[0.03] border border-white/10 px-4 py-3 flex items-center gap-3">
+                <div className="w-8 h-8 rounded-full bg-[#8247E5]/10 border border-[#8247E5]/20 flex items-center justify-center flex-shrink-0">
+                  <span className="text-[#8247E5] text-[10px] font-bold">POL</span>
+                </div>
+                <div>
+                  <div className="text-white/35 text-[10px] uppercase tracking-wider">Your POL</div>
+                  <div className="text-white font-bold text-base leading-tight">{Number(maticBalance).toFixed(4)}</div>
+                </div>
               </div>
             </div>
           )}
 
           {/* Divider */}
-          <div className="h-px bg-white/10" />
+          <div className="relative">
+            <div className="h-px bg-white/8" />
+            <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-[#0d0d0d] px-3 text-white/20 text-xs">Buy</span>
+          </div>
 
-          {/* Buy form */}
-          <div className="space-y-3">
+          {/* Input */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-white/40 text-xs uppercase tracking-wider">You Pay</span>
+              {account && <span className="text-white/25 text-xs">Balance: {Number(maticBalance).toFixed(4)} POL</span>}
+            </div>
             <div className="relative">
               <input
                 type="number"
                 min="0"
                 step="0.1"
-                value={maticAmt}
-                onChange={e => setMaticAmt(e.target.value)}
+                value={polAmt}
+                onChange={e => setPolAmt(e.target.value)}
                 placeholder="0.0"
-                className="input-gold w-full pr-20 text-lg"
+                className="input-gold w-full text-xl font-bold pr-24"
               />
-              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[#D4AF37]/60 text-sm font-medium">POL</span>
+              <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1.5">
+                <div className="w-5 h-5 rounded-full bg-[#8247E5]/20 border border-[#8247E5]/40 flex items-center justify-center">
+                  <span className="text-[#8247E5] text-[8px] font-bold">P</span>
+                </div>
+                <span className="text-[#D4AF37]/70 text-sm font-semibold">POL</span>
+              </div>
             </div>
-
-            {/* Quick amounts */}
-            <div className="flex gap-2">
-              {['10', '100', '500', '1000'].map(v => (
-                <button key={v} onClick={() => setMaticAmt(v)}
-                  className="flex-1 py-1.5 rounded-lg text-xs border border-[#D4AF37]/20 text-[#D4AF37]/50 hover:border-[#D4AF37]/60 hover:text-[#D4AF37] transition-all">
-                  {v}
-                </button>
-              ))}
-            </div>
-
-            {/* Estimated receive */}
-            <div className="rounded-xl bg-[#00C853]/5 border border-[#00C853]/20 px-4 py-3 flex justify-between items-center">
-              <span className="text-white/40 text-sm">You receive</span>
-              <span className="text-[#00C853] font-bold text-lg">{estimated || '0'} <span className="text-sm font-normal text-white/30">WTC</span></span>
-            </div>
-
-            {!account ? (
-              <button onClick={onConnect} className="btn-gold w-full py-4 rounded-xl font-bold text-base">
-                Connect Wallet to Buy
-              </button>
-            ) : wrongNetwork ? (
-              <button disabled className="btn-disabled w-full py-4 rounded-xl font-bold text-base">
-                Switch to Polygon First
-              </button>
-            ) : (
-              <button onClick={handleBuy} disabled={loading}
-                className={`w-full py-4 rounded-xl font-bold text-base transition-all ${loading ? 'btn-disabled' : 'btn-green'}`}>
-                {loading ? (
-                  <span className="flex items-center justify-center gap-2">
-                    <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
-                    Processing…
-                  </span>
-                ) : 'Buy WTC Now'}
-              </button>
-            )}
+            {usdValue && <div className="text-white/25 text-xs pl-1">≈ ${usdValue} USD</div>}
           </div>
 
-          {/* Footer note */}
-          <p className="text-white/20 text-xs text-center">
-            Powered by Polygon · Smart contract verified · No hidden fees
-          </p>
+          {/* Quick amounts */}
+          <div className="grid grid-cols-4 gap-2">
+            {['10', '50', '100', '500'].map(v => (
+              <button key={v} onClick={() => setPolAmt(v)}
+                className="py-2 rounded-lg text-xs font-medium border border-[#D4AF37]/15 text-[#D4AF37]/50 hover:border-[#D4AF37]/50 hover:text-[#D4AF37] hover:bg-[#D4AF37]/5 transition-all">
+                {v} POL
+              </button>
+            ))}
+          </div>
+
+          {/* You receive */}
+          <div className="rounded-xl border border-[#00C853]/20 bg-[#00C853]/5 px-4 py-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-white/40 text-xs uppercase tracking-wider mb-1">You Receive</div>
+                <div className="text-[#00C853] font-bold text-3xl leading-none">{wtcReceived}</div>
+                <div className="text-white/25 text-xs mt-1">WTC tokens • sent to your wallet</div>
+              </div>
+              <div className="w-12 h-12 rounded-full bg-[#D4AF37]/10 border border-[#D4AF37]/20 flex items-center justify-center">
+                <span className="text-[#D4AF37] font-bold text-sm">WTC</span>
+              </div>
+            </div>
+          </div>
+
+          {/* CTA */}
+          {!account ? (
+            <button onClick={onConnect}
+              className="btn-gold w-full py-4 rounded-xl font-bold text-base tracking-wide">
+              Connect Wallet to Participate
+            </button>
+          ) : wrongNetwork ? (
+            <button disabled className="btn-disabled w-full py-4 rounded-xl font-bold text-base">
+              ⚠ Switch to Polygon Network
+            </button>
+          ) : (
+            <button onClick={handleBuy} disabled={loading || !polAmt || parseFloat(polAmt) <= 0}
+              className={`w-full py-4 rounded-xl font-bold text-base tracking-wide transition-all ${
+                loading || !polAmt || parseFloat(polAmt) <= 0 ? 'btn-disabled' : 'btn-green'
+              }`}>
+              {loading ? (
+                <span className="flex items-center justify-center gap-2">
+                  <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
+                  Processing…
+                </span>
+              ) : `Buy ${wtcReceived} WTC`}
+            </button>
+          )}
+
+          {/* TX confirmed link */}
+          {txHash && (
+            <a href={`https://polygonscan.com/tx/${txHash}`} target="_blank" rel="noopener noreferrer"
+              className="flex items-center justify-center gap-2 text-[#D4AF37]/60 hover:text-[#D4AF37] text-xs transition-colors">
+              <span className="w-1.5 h-1.5 rounded-full bg-[#00C853]"></span>
+              View on Polygonscan ↗
+            </a>
+          )}
+
+          {/* Trust line */}
+          <div className="flex items-center justify-center gap-4 pt-1">
+            <span className="flex items-center gap-1 text-white/20 text-[10px]">
+              <span>🔒</span> Non-custodial
+            </span>
+            <span className="w-px h-3 bg-white/10"></span>
+            <span className="flex items-center gap-1 text-white/20 text-[10px]">
+              <span>⛓</span> Polygon Network
+            </span>
+            <span className="w-px h-3 bg-white/10"></span>
+            <span className="flex items-center gap-1 text-white/20 text-[10px]">
+              <span>✦</span> Phase 1
+            </span>
+          </div>
         </div>
       </div>
     </section>
@@ -1502,7 +1564,7 @@ export default function App() {
       />
       <BuySection
         account={account} chainId={chainId}
-        tokensPerMatic={tokensPerMatic} totalSupply={totalSupply}
+        totalSupply={totalSupply}
         polUsdPrice={polUsdPrice}
         wlthBalance={wlthBalance} maticBalance={maticBalance}
         addToast={addToast} onConnect={() => setConnectModalOpen(true)}
