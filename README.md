@@ -5,7 +5,7 @@ A faith-based, long-term wealth-building digital asset on Polygon blockchain.
 ## Setup
 
 ### Prerequisites
-- Node.js 16+ installed
+- Node.js 24.x installed
 - npm or yarn package manager
 - A Web3 wallet (MetaMask recommended)
 
@@ -13,7 +13,7 @@ A faith-based, long-term wealth-building digital asset on Polygon blockchain.
 
 1. Open terminal and navigate to the project directory:
 ```bash
-cd c:\Users\Arnas\Downloads\frontend\frontend
+cd frontend
 ```
 
 2. Install dependencies:
@@ -21,11 +21,19 @@ cd c:\Users\Arnas\Downloads\frontend\frontend
 npm install
 ```
 
+3. Create your local environment file (required for WalletConnect QR modal):
+```bash
+# Copy the example and fill in your project ID
+cp .env.example .env
+```
+Then edit `.env` and replace `your_walletconnect_project_id_here` with your actual ID from [cloud.reown.com](https://cloud.reown.com).
+
 This will install:
 - **Vite** - Lightning-fast dev server and build tool
 - **React 18** - UI framework
 - **ethers.js v6** - Web3 library for blockchain interactions
 - **Tailwind CSS** - Utility-first CSS framework
+- **WalletConnect / Reown AppKit** - QR code & mobile wallet connections
 
 ## Running the Development Server
 
@@ -113,14 +121,31 @@ Recommended steps to deploy the production build to Vercel:
 
 1. Push the repository to GitHub.
 2. Create a new project on Vercel and import the repo.
-	- Set the **Build Command** to `npm run build` (or leave blank if using `vercel.json`).
-	- Set the **Output Directory** to `dist`.
+   - Framework Preset: **Vite**
+   - Install Command: `npm ci` (or leave blank if using `vercel.json`)
+   - Build Command: `npm run build` (or leave blank if using `vercel.json`)
+   - Output Directory: `dist`
+   - Node.js Version: `24.x`
+   - Environment Variable: `VITE_WALLETCONNECT_PROJECT_ID`
 3. Or deploy from CLI:
 ```bash
-npm install
+npm ci
 npm run vercel-build
 # then (if you have Vercel CLI configured)
 vercel --prod
 ```
 
-If you see missing asset errors after deploy, ensure `vercel.json` contains an assets rewrite before the SPA catch-all (this project includes that fix).
+The project includes `.nvmrc`, `.node-version`, `package.json` engines, and `vercel.json` settings that all point to Node 24.
+
+### WalletConnect QR Setup
+
+To enable QR code wallet connections on Vercel:
+
+1. Create a WalletConnect Project ID from the WalletConnect/Reown Cloud dashboard.
+2. In Vercel, open the project settings and add this environment variable:
+```bash
+VITE_WALLETCONNECT_PROJECT_ID=your_project_id
+```
+3. Redeploy the project.
+
+Direct browser wallet connections work through installed EVM extensions such as MetaMask, Coinbase Wallet, Rabby, and Trust Wallet. QR/mobile wallet connections use WalletConnect.
