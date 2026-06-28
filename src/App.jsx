@@ -1,3 +1,5 @@
+import StartHere from './components/StartHere';
+import Charter from './components/Charter';
 import { useCallback, useState } from 'react';
 import Navbar from './components/Navbar';
 import Hero from './components/Hero';
@@ -48,7 +50,9 @@ export default function App() {
         onSwitch={wallet.switchToPolygon}
       />
       <LongTermSupport />
-      <DevelopmentCenter />
+      <DevelopmentCenter /
+><StartHere
+/><Charter />
       <Footer />
     </div>
   );
