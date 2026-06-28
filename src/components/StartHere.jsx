@@ -1,3 +1,6 @@
+import overviewPdf from '../assets/docs/WealthCoin_Overview_v1.pdf';
+import charterPdf from '../assets/docs/WealthCoin_Charter_v1.pdf';
+
 const documents = [
   {
     icon: '📊',
@@ -6,7 +9,7 @@ const documents = [
     description: 'A simple beginner-friendly visual guide to WealthCoin, crypto, stewardship, and the mission.',
     meta: 'Estimated read: 5 minutes',
     button: 'View Infographic',
-    href: '/WealthCoin_Overview_v1.pdf',
+    href: overviewPdf,
   },
   {
     icon: '📜',
@@ -15,7 +18,7 @@ const documents = [
     description: 'The deeper mission, values, biblical leadership, long-term vision, and guiding scriptures of WealthCoin.',
     meta: 'Version 1.0 • July 2026',
     button: 'Read Charter',
-    href: '/WealthCoin_Charter_v1.pdf',
+    href: charterPdf,
   },
   {
     icon: '📘',
@@ -24,7 +27,6 @@ const documents = [
     description: 'Investor-grade documentation covering tokenomics, roadmap, contracts, and ecosystem development.',
     meta: 'In development',
     button: 'Coming Soon',
-    href: '#',
     disabled: true,
   },
 ];
@@ -48,7 +50,10 @@ export default function StartHere() {
 
       <div className="grid md:grid-cols-3 gap-5">
         {documents.map((doc) => (
-          <div key={doc.title} className="card-glass rounded-2xl border border-[#D4AF37]/15 p-6 flex flex-col">
+          <div
+            key={doc.title}
+            className="card-glass rounded-2xl border border-[#D4AF37]/15 p-6 flex flex-col"
+          >
             <div className="text-4xl mb-4">{doc.icon}</div>
 
             <div className="text-[#D4AF37] text-xs uppercase tracking-widest font-semibold mb-2">
@@ -68,15 +73,18 @@ export default function StartHere() {
             </div>
 
             {doc.disabled ? (
-              <button disabled className="btn-disabled w-full py-3 rounded-xl font-bold">
+              <button
+                disabled
+                className="btn-disabled w-full py-3 rounded-xl font-bold"
+              >
                 {doc.button}
               </button>
             ) : (
               <a
                 href={doc.href}
                 target="_blank"
-                rel="noreferrer"
-                className="btn-gold text-center w-full py-3 rounded-xl font-bold"
+                rel="noopener noreferrer"
+                className="btn-gold w-full py-3 rounded-xl font-bold text-center"
               >
                 {doc.button}
               </a>
@@ -87,7 +95,9 @@ export default function StartHere() {
 
       <div className="card-gold-glow rounded-2xl p-6 mt-8 text-center">
         <p className="text-white/60 max-w-3xl mx-auto leading-relaxed">
-          WealthCoin is building a transparent ecosystem centered on education, stewardship, biblical leadership, and responsible blockchain development.
+          WealthCoin is building a transparent ecosystem centered on education,
+          stewardship, biblical leadership, and responsible blockchain
+          development.
         </p>
       </div>
     </section>
