@@ -24,7 +24,7 @@ export default function Navbar({ account, chainId, onConnect, onWalletConnect, o
           ) : (
             <>
               <button onClick={onConnect} className="btn-gold px-4 py-1.5 rounded-lg text-sm font-semibold">Connect Wallet</button>
-              <button onClick={onWalletConnect} className="hidden sm:block btn-ghost px-3 py-1.5 rounded-lg text-xs">QR</button>
+             <button onClick={onWalletConnect} className="btn-ghost px-3 py-1.5 rounded-lg text-xs">Mobile / QR</button>
             </>
           )}
         </div>
